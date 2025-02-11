@@ -36,9 +36,6 @@
       }
     });
 
-    // a function that invokes window.confirm API to ask the user to confirm if the origin is allowed
-    // if there is a confirm dialog already, it will queue the request and wait for the user to respond to the previous request
-    // before asking for the current one.
     function confirmOriginAllowed(eventId) {
       for (let [eventId, { origin, eventSource }] of pendingConfirmationOrigins) {
         if (confirm(`allow ${origin}?`)) {
