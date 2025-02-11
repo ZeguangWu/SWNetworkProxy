@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Service Worker Block Test</title>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("sw.js")
+        .then((registration) => {
+          console.log("Service Worker registered:", registration);
+        })
+        .catch((error) => {
+          console.error("Service Worker registration failed:", error);
+        });
+    }
+
+    const pendingConfirmationOrigins = new Map();
+    const allowedOrigins = localStorage.getItem('getAllowedOrigins')?.split(',') ?? [];
+    const blockedOrigins = localStorage.getItem('getBlockedOrigins')?.split(',') ?? [];
+
+    navigator.serviceWorker.addEventListener('message', event => {
+      const eventId = event.data.eventId;
+      switch (event.data.action) {
+        case "getAllowedOrigins":
+          event.source.postMessage({ eventId, action: "getAllowedOrigins", value: { allowedOrigins, blockedOrigins } });
+          break;
+        case "confirmOriginAllowed":
+          pendingConfirmationOrigins.set(eventId, { origin: event.data.origin, eventSource: event.source });
+          confirmOriginAllowed(eventId);
+          break;
+        default:
+          console.error("Unknown action:", event.data.action);
+      }
+    });
+
+    // a function that invokes window.confirm API to ask the user to confirm if the origin is allowed
+    // if there is a confirm dialog already, it will queue the request and wait for the user to respond to the previous request
+    // before asking for the current one.
+    function confirmOriginAllowed(eventId) {
+      for (let [eventId, { origin, eventSource }] of pendingConfirmationOrigins) {
+        if (confirm(`allow ${origin}?`)) {
+          allowedOrigins.push(origin);
+          localStorage.setItem('getAllowedOrigins', allowedOrigins.join(','));
+          renderAllowedOrigins();
+          eventSource.postMessage({ eventId, action: "confirmOriginAllowed", origin, value: true });
+        } else {
+          blockedOrigins.push(origin);
+          localStorage.setItem('getBlockedOrigins', blockedOrigins.join(','));
+          renderAllowedOrigins();
+          eventSource.postMessage({ eventId, action: "confirmOriginAllowed", origin, value: false });
+        }
+
+        // remove the origin from the pending list
+        pendingConfirmationOrigins.delete(eventId);
+      }
+    }
+
+
+    // block the page from loading, wait until the service worker is fully registered
+    window.addEventListener("load", () => {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then(() => {
+          console.log("Service Worker Ready");
+          render();
+        });
+      }
+    });
+
+    function render() {
+      renderAllowedOrigins();
+
+      document.querySelector("#canvas").innerHTML = `
+              <h1>Testing Service Worker Blocking Images</h1>
+              <h1> google </h1>
+              <img
+                src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png"
+                alt="Test Image"
+              />
+              <h1> bing </h1>
+              <img
+              src="https://th.bing.com/th/id/OIP.t57OzeATZKjBDDrzXqbc5gHaE7?rs=1&pid=ImgDetMain"
+              alt="Test Image" />
+              <h1> gstatic </h1>
+              <img
+              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTZqhMhfKWL0x-NGbG2zutEi_rHT_6hix6SFHA6G5aXze-Rwyp89AsIX6k&s"
+              alt="Test Image" />
+              `;
+
+    }
+
+    function renderAllowedOrigins() {
+      const allowedOrigins = localStorage.getItem('getAllowedOrigins')?.split(',') ?? [];
+      const blockedOrigins = localStorage.getItem('getBlockedOrigins')?.split(',') ?? [];
+      document.querySelector("#allowedOrigins").innerHTML = `
+        <h2>Allowed Origins</h2>
+        <ul>
+          ${allowedOrigins.map(origin => `<li>${origin}</li>`).join('')}
+        </ul>
+      `;
+      document.querySelector("#blockedOrigins").innerHTML = `
+        <h2>Blocked Origins</h2>
+        <ul>
+          ${blockedOrigins.map(origin => `<li>${origin}</li>`).join('')}
+        </ul>
+      `;
+    }
+  </script>
+</head>
+
+<body>
+  <div id="toolbar">
+    <div id="allowedOrigins"></div>
+    <div>
+      <button onclick="localStorage.removeItem('getAllowedOrigins'); renderAllowedOrigins();">Clear Allowed
+        Origins</button>
+    </div>
+    <div id="blockedOrigins"></div>
+    <div>
+      <button onclick="localStorage.removeItem('getBlockedOrigins'); renderAllowedOrigins();">Clear Blocked
+        Origins</button>
+    </div>
+  </div>
+  <div id="canvas">
+    <h1>Initializing Service Worker...</h1>
+  </div>
+</body>
+
+</html>
